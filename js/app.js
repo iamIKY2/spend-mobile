@@ -8,6 +8,7 @@ class AppController {
     this.transactions = [];
     this.currentChartType = 'expense';
     this.editingCategoryId = null; // ID danh mục đang chỉnh sửa (null nếu thêm mới)
+    this.editingTransactionId = null; // ID giao dịch đang chỉnh sửa (null nếu thêm mới)
   }
 
   async init() {
@@ -166,9 +167,10 @@ class AppController {
     const budget = apiService.getBudget();
     uiService.updateOverviewCards(this.transactions, budget);
     chartService.updateChartsTheme(this.transactions, this.currentChartType);
-    uiService.renderTransactionList(this.transactions, (id, cardEl) => {
-      this.handleDeleteTransaction(id, cardEl);
-    });
+    uiService.renderTransactionList(this.transactions, 
+      (id, cardEl) => this.handleDeleteTransaction(id, cardEl),
+      (tx) => this.showEditTransactionModal(tx)
+    );
     this.updateHistoryView();
   }
 
@@ -204,20 +206,27 @@ class AppController {
       document.getElementById('selectedDayPanel').style.display = 'block';
 
       uiService.renderCalendarView(this.transactions, (dateStr) => {
-        uiService.renderSelectedDayTransactions(dateStr, this.transactions, (id, card) => this.handleDeleteTransaction(id, card));
+        uiService.renderSelectedDayTransactions(dateStr, this.transactions, 
+          (id, card) => this.handleDeleteTransaction(id, card),
+          (tx) => this.showEditTransactionModal(tx)
+        );
       });
       
       uiService.renderSelectedDayTransactions(
         uiService.selectedCalendarDate,
         this.transactions,
-        (id, card) => this.handleDeleteTransaction(id, card)
+        (id, card) => this.handleDeleteTransaction(id, card),
+        (tx) => this.showEditTransactionModal(tx)
       );
     } else {
       document.getElementById('calendarGridViewSection').style.display = 'none';
       document.getElementById('timelineListViewSection').style.display = 'block';
       document.getElementById('selectedDayPanel').style.display = 'none';
 
-      uiService.renderTimelineView(this.transactions, (id, card) => this.handleDeleteTransaction(id, card));
+      uiService.renderTimelineView(this.transactions, 
+        (id, card) => this.handleDeleteTransaction(id, card),
+        (tx) => this.showEditTransactionModal(tx)
+      );
     }
   }
 
@@ -287,6 +296,132 @@ class AppController {
     }, 300);
   }
 
+  showEditTransactionModal(tx) {
+    this.editingTransactionId = tx.id;
+    
+    // 1. Thay đổi tiêu đề modal và nút lưu
+    const modalTitle = document.getElementById('transactionModalTitle');
+    if (modalTitle) {
+      modalTitle.innerHTML = '<i data-lucide="edit-2"></i> Chỉnh Sửa Giao Dịch';
+      if (window.lucide) lucide.createIcons({ root: modalTitle });
+    }
+    const btnSubmit = document.getElementById('btnSubmitTransaction');
+    if (btnSubmit) {
+      btnSubmit.innerHTML = '<i data-lucide="check"></i> Cập Nhật Giao Dịch';
+      if (window.lucide) lucide.createIcons({ root: btnSubmit });
+    }
+    
+    // 2. Điền dữ liệu vào form
+    // Loại giao dịch
+    const typeRadios = document.querySelectorAll('#addTransactionModal input[name="type"]');
+    typeRadios.forEach(radio => {
+      if (radio.value === tx.type) {
+        radio.checked = true;
+        // Trigger event change để cập nhật danh mục cho phù hợp
+        radio.dispatchEvent(new Event('change'));
+      }
+    });
+    
+    // Ngày giao dịch
+    const txDate = document.getElementById('txDate');
+    if (txDate) txDate.value = tx.date;
+    
+    // Số tiền
+    const txAmount = document.getElementById('txAmount');
+    if (txAmount) {
+      txAmount.value = tx.amount;
+      uiService.renderAmountSuggestions(tx.amount.toString(), (val) => this.handleSelectSuggestedAmount(val));
+    }
+    
+    // Ghi chú
+    const txNote = document.getElementById('txNote');
+    if (txNote) txNote.value = tx.note || '';
+    
+    // Đặt giá trị cho select ẩn txCategory và trigger event change để bottom sheet inline script tự cập nhật
+    const txCategory = document.getElementById('txCategory');
+    if (txCategory) {
+      txCategory.value = tx.category;
+      txCategory.dispatchEvent(new Event('change'));
+    }
+    
+    // 3. Mở modal
+    uiService.openModal('addTransactionModal');
+  }
+
+  resetTransactionFormForAdd() {
+    this.editingTransactionId = null;
+    const modalTitle = document.getElementById('transactionModalTitle');
+    if (modalTitle) {
+      modalTitle.innerHTML = '<i data-lucide="plus-circle"></i> Thêm Giao Dịch Mới';
+      if (window.lucide) lucide.createIcons({ root: modalTitle });
+    }
+    const btnSubmit = document.getElementById('btnSubmitTransaction');
+    if (btnSubmit) {
+      btnSubmit.innerHTML = '<i data-lucide="check"></i> Lưu Giao Dịch';
+      if (window.lucide) lucide.createIcons({ root: btnSubmit });
+    }
+    const form = document.getElementById('transactionForm');
+    if (form) {
+      form.reset();
+    }
+    
+    // Đặt lại ngày hiện tại hoặc ngày được chọn trên lịch
+    const txDate = document.getElementById('txDate');
+    if (txDate) {
+      txDate.value = uiService.selectedCalendarDate || CONFIG.utils.getLocalDateString();
+    }
+    
+    // Khởi tạo gợi ý trống
+    uiService.renderAmountSuggestions('', (val) => this.handleSelectSuggestedAmount(val));
+
+    // Trigger reset loại giao dịch về mặc định (expense) để danh mục select được lọc lại
+    const defaultTypeRadio = document.querySelector('#addTransactionModal input[name="type"][value="expense"]');
+    if (defaultTypeRadio) {
+      defaultTypeRadio.checked = true;
+      defaultTypeRadio.dispatchEvent(new Event('change'));
+    }
+  }
+
+  async handleEditTransaction(formData) {
+    const btnSubmit = document.getElementById('btnSubmitTransaction');
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = '<span class="spinner"></span> Đang cập nhật...';
+    }
+
+    try {
+      const updatedTx = {
+        id: this.editingTransactionId,
+        date: formData.get('date'),
+        type: formData.get('type'),
+        category: formData.get('category'),
+        amount: Number(formData.get('amount')),
+        note: formData.get('note') || ''
+      };
+
+      const res = await apiService.updateTransaction(updatedTx);
+      
+      if (res && res.status === 'success') {
+        this.transactions = this.transactions.map(tx => String(tx.id) === String(this.editingTransactionId) ? res.transaction : tx);
+        this.updateDashboard();
+
+        uiService.closeModal('addTransactionModal');
+        this.editingTransactionId = null;
+
+        uiService.showToast('✏️ Đã cập nhật giao dịch thành công!', 'success');
+      }
+    } catch (error) {
+      console.error('Lỗi cập nhật giao dịch:', error);
+      uiService.showToast('Không thể cập nhật giao dịch. Vui lòng kiểm tra lại!', 'error');
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '<i data-lucide="check"></i> Lưu Giao Dịch';
+        if (window.lucide) lucide.createIcons({ root: btnSubmit });
+      }
+    }
+  }
+
   handleSelectSuggestedAmount(val) {
     const inputEl = document.getElementById('txAmount');
     if (inputEl) {
@@ -341,7 +476,7 @@ class AppController {
       }
 
       uiService.selectedCatIcon = categoryToEdit.icon || 'tag';
-      uiService.selectedCatColor = categoryToEdit.color || '#6366F1';
+      uiService.selectedCatColor = categoryToEdit.color || '#E29578';
       if (colorInput) colorInput.value = uiService.selectedCatColor;
     } else {
       this.editingCategoryId = null;
@@ -356,8 +491,8 @@ class AppController {
       }
 
       uiService.selectedCatIcon = 'tag';
-      uiService.selectedCatColor = '#6366F1';
-      if (colorInput) colorInput.value = '#6366F1';
+      uiService.selectedCatColor = '#E29578';
+      if (colorInput) colorInput.value = '#E29578';
     }
 
     if (window.lucide) lucide.createIcons({ root: titleEl });
@@ -374,7 +509,7 @@ class AppController {
     }
 
     const type = formData.get('type') || 'expense';
-    const color = document.getElementById('catColorInput')?.value || uiService.selectedCatColor || '#6366F1';
+    const color = document.getElementById('catColorInput')?.value || uiService.selectedCatColor || '#E29578';
     const icon = uiService.selectedCatIcon || 'tag';
 
     const catData = {
@@ -479,19 +614,16 @@ class AppController {
     });
 
     document.getElementById('btnAddForSelectedDay')?.addEventListener('click', () => {
-      document.getElementById('txDate').value = uiService.selectedCalendarDate || CONFIG.utils.getLocalDateString();
-      uiService.renderAmountSuggestions('', (val) => this.handleSelectSuggestedAmount(val));
+      this.resetTransactionFormForAdd();
       uiService.openModal('addTransactionModal');
     });
     document.getElementById('btnOpenAddModalFromHistory')?.addEventListener('click', () => {
-      document.getElementById('txDate').value = uiService.selectedCalendarDate || CONFIG.utils.getLocalDateString();
-      uiService.renderAmountSuggestions('', (val) => this.handleSelectSuggestedAmount(val));
+      this.resetTransactionFormForAdd();
       uiService.openModal('addTransactionModal');
     });
 
     document.getElementById('btnOpenAddModal')?.addEventListener('click', () => {
-      document.getElementById('txDate').value = CONFIG.utils.getLocalDateString();
-      uiService.renderAmountSuggestions('', (val) => this.handleSelectSuggestedAmount(val));
+      this.resetTransactionFormForAdd();
       uiService.openModal('addTransactionModal');
     });
 
@@ -553,7 +685,11 @@ class AppController {
     document.getElementById('transactionForm')?.addEventListener('submit', (e) => {
       e.preventDefault();
       const formData = new FormData(e.target);
-      this.handleAddTransaction(formData);
+      if (this.editingTransactionId) {
+        this.handleEditTransaction(formData);
+      } else {
+        this.handleAddTransaction(formData);
+      }
     });
 
     // Lắng nghe sự kiện gõ số tiền để cập nhật gợi ý thông minh

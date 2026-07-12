@@ -11,7 +11,7 @@ class UiService {
     this.categoryFilter = 'all';
     this.activeCatTab = 'expense'; // Tab đang chọn trong Modal Quản lý danh mục
     this.selectedCatIcon = 'tag';
-    this.selectedCatColor = '#6366F1';
+    this.selectedCatColor = '#E29578';
     this.currentView = 'dashboard';
     this.historyViewMode = 'calendar';
     this.calendarMonth = new Date().getMonth();
@@ -216,7 +216,7 @@ class UiService {
   /**
    * Render danh sách giao dịch
    */
-  renderTransactionList(transactions = [], onDeleteCallback = null) {
+  renderTransactionList(transactions = [], onDeleteCallback = null, onEditCallback = null) {
     this.currentList = transactions;
     const container = document.getElementById('transactionListContainer');
     const emptyState = document.getElementById('emptyStateContainer');
@@ -253,14 +253,14 @@ class UiService {
     container.innerHTML = '';
 
     filtered.forEach((tx, index) => {
-      const card = this.createTxCardElement(tx, index, allCats, onDeleteCallback);
+      const card = this.createTxCardElement(tx, index, allCats, onDeleteCallback, onEditCallback);
       container.appendChild(card);
     });
 
     if (window.lucide) lucide.createIcons({ root: container });
   }
 
-  createTxCardElement(tx, index, allCats, onDeleteCallback) {
+  createTxCardElement(tx, index, allCats, onDeleteCallback, onEditCallback) {
     const catInfo = allCats[tx.category] || {
       name: 'Khác',
       icon: 'tag',
@@ -271,6 +271,7 @@ class UiService {
     const isExpense = tx.type === 'expense';
     const amountPrefix = isExpense ? '-' : '+';
     const amountClass = isExpense ? 'tx-amount-expense' : 'tx-amount-income';
+    const isMobile = !window.location.pathname.includes('desktop.html');
 
     const card = document.createElement('div');
     card.className = 'tx-card animate-fade-in';
@@ -288,12 +289,124 @@ class UiService {
       </div>
       <div class="tx-right">
         <div class="${amountClass}">${amountPrefix}${this.formatCurrency(tx.amount)}</div>
-        <button class="tx-delete-btn" title="Xóa giao dịch" data-id="${tx.id}">
-          <i data-lucide="trash-2"></i>
-        </button>
+        <div class="tx-actions">
+          ${!isMobile ? `
+          <button class="tx-edit-btn" title="Sửa giao dịch" data-id="${tx.id}">
+            <i data-lucide="edit-2"></i>
+          </button>
+          ` : ''}
+          <button class="tx-delete-btn" title="Xóa giao dịch" data-id="${tx.id}">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
       </div>
     `;
 
+    // Biến lưu trạng thái vuốt để tránh click nhầm khi đang vuốt trên mobile
+    let hasSwiped = false;
+
+    if (isMobile) {
+      // 1. Chạm trực tiếp vào thẻ để sửa (Tap-to-Edit)
+      if (onEditCallback) {
+        card.addEventListener('click', (e) => {
+          if (hasSwiped) return;
+          // Bỏ qua nếu click trúng nút xóa
+          if (e.target.closest('.tx-delete-btn')) return;
+          onEditCallback(tx);
+        });
+        card.style.cursor = 'pointer';
+      }
+
+      // 2. Vuốt trái để xóa (Swipe-to-Delete)
+      if (onDeleteCallback) {
+        let startX = 0;
+        let startY = 0;
+        let currentX = 0;
+        let currentY = 0;
+        let isSwiping = false;
+
+        card.addEventListener('touchstart', (e) => {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+          hasSwiped = false;
+          card.style.transition = 'none';
+        }, { passive: true });
+
+        card.addEventListener('touchmove', (e) => {
+          currentX = e.touches[0].clientX;
+          currentY = e.touches[0].clientY;
+
+          const diffX = startX - currentX;
+          const diffY = startY - currentY;
+
+          // Nếu vuốt ngang rõ ràng hơn vuốt dọc
+          if (Math.abs(diffX) > Math.abs(diffY) * 1.5) {
+            if (diffX > 10) { // Vuốt sang trái
+              isSwiping = true;
+              hasSwiped = true;
+              if (e.cancelable) e.preventDefault();
+
+              // Di chuyển thẻ theo ngón tay
+              const transformX = Math.min(diffX, window.innerWidth * 0.8);
+              card.style.transform = `translateX(-${transformX}px)`;
+
+              // Tạo hiệu ứng mờ dần
+              const opacity = Math.max(1 - (transformX / (window.innerWidth * 0.6)), 0.3);
+              card.style.opacity = opacity;
+
+              // Đổi màu cảnh báo nếu vuốt đủ xa
+              if (transformX > 100) {
+                card.style.borderColor = 'rgba(205, 92, 92, 0.4)';
+                card.style.background = 'rgba(205, 92, 92, 0.08)';
+              } else {
+                card.style.borderColor = '';
+                card.style.background = '';
+              }
+            }
+          }
+        }, { passive: false });
+
+        card.addEventListener('touchend', (e) => {
+          if (!isSwiping) return;
+          isSwiping = false;
+
+          const diffX = startX - currentX;
+          const threshold = 120; //px
+
+          card.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+
+          if (diffX > threshold) {
+            // Vuốt qua ngưỡng -> Trượt hết và Xóa
+            card.style.transform = 'translateX(-100%)';
+            card.style.opacity = '0';
+            setTimeout(() => {
+              onDeleteCallback(tx.id, card);
+            }, 300);
+          } else {
+            // Trả về bình thường
+            card.style.transform = 'translateX(0)';
+            card.style.opacity = '1';
+            card.style.borderColor = '';
+            card.style.background = '';
+            // Reset hasSwiped sau một độ trễ nhỏ để tránh click bị kích hoạt ngay lập tức
+            setTimeout(() => {
+              hasSwiped = false;
+            }, 50);
+          }
+        });
+      }
+    } else {
+      // Trên Desktop: nút sửa click thông thường
+      const editBtn = card.querySelector('.tx-edit-btn');
+      if (editBtn && onEditCallback) {
+        editBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onEditCallback(tx);
+        });
+      }
+    }
+
+    // Nút xóa click thông thường (sử dụng trên cả desktop lẫn mobile nếu nhấn trực tiếp)
     const deleteBtn = card.querySelector('.tx-delete-btn');
     if (deleteBtn && onDeleteCallback) {
       deleteBtn.addEventListener('click', (e) => {
@@ -661,7 +774,7 @@ class UiService {
   /**
    * Render danh sách giao dịch cho Ngày được chọn trong Lịch
    */
-  renderSelectedDayTransactions(dateStr, transactions, onDeleteCallback) {
+  renderSelectedDayTransactions(dateStr, transactions, onDeleteCallback, onEditCallback) {
     const listContainer = document.getElementById('selectedDayTxList');
     const titleEl = document.getElementById('selectedDayTitle');
     const summaryEl = document.getElementById('selectedDaySummary');
@@ -692,7 +805,7 @@ class UiService {
 
     const allCats = apiService.getCategories();
     dayTxs.forEach((tx, idx) => {
-      const card = this.createTxCardElement(tx, idx, allCats, onDeleteCallback);
+      const card = this.createTxCardElement(tx, idx, allCats, onDeleteCallback, onEditCallback);
       listContainer.appendChild(card);
     });
 
@@ -702,7 +815,7 @@ class UiService {
   /**
    * Render chế độ Dòng thời gian (Timeline View)
    */
-  renderTimelineView(transactions, onDeleteCallback) {
+  renderTimelineView(transactions, onDeleteCallback, onEditCallback) {
     const container = document.getElementById('timelineListContainer');
     if (!container) return;
 
@@ -765,7 +878,7 @@ class UiService {
 
       const cardsList = groupEl.querySelector('.timeline-cards-list');
       groups[dateStr].forEach((tx, cIdx) => {
-        const card = this.createTxCardElement(tx, cIdx, allCats, onDeleteCallback);
+        const card = this.createTxCardElement(tx, cIdx, allCats, onDeleteCallback, onEditCallback);
         cardsList.appendChild(card);
       });
 

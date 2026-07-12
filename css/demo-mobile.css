@@ -10,7 +10,7 @@ body {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, rgba(15, 23, 42, 1) 90.2%);
+  background: radial-gradient(circle at 10% 20%, rgba(226, 149, 120, 0.15) 0%, rgba(24, 21, 20, 1) 90.2%);
 }
 
 /* 1. KHUNG ĐIỆN THOẠI (PHONE MOCKUP) - CHỈ HIỂN THỊ TRÊN DESKTOP */
@@ -23,13 +23,13 @@ body {
     position: relative;
     width: 390px; /* Chiều rộng chuẩn của iPhone 12/13/14 Pro */
     height: 844px; /* Chiều cao chuẩn của iPhone 12/13/14 Pro */
-    background: #090d16;
-    border: 12px solid #1e293b; /* Viền điện thoại màu tối sẫm */
+    background: #13100f;
+    border: 12px solid #28211f; /* Viền điện thoại màu tối sẫm terracotta */
     border-radius: 48px; /* Bo cong tròn */
     box-shadow: 
       0 0 0 2px rgba(255, 255, 255, 0.05),
       0 25px 50px -12px rgba(0, 0, 0, 0.6),
-      0 0 40px rgba(99, 102, 241, 0.15); /* Ánh sáng glow nhẹ từ màn hình */
+      0 0 40px rgba(226, 149, 120, 0.15); /* Ánh sáng glow nhẹ từ màn hình */
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -197,11 +197,11 @@ body {
 
 .phone-screen .page-nav-btn.active {
   color: var(--primary-color);
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(226, 149, 120, 0.1);
 }
 
 [data-theme="light"] .phone-screen .page-nav-btn.active {
-  background: rgba(79, 70, 229, 0.08);
+  background: rgba(212, 163, 115, 0.08);
 }
 
 /* CONTAINER NÚT NỔI FAB (+) */
@@ -224,7 +224,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 6px 20px rgba(226, 149, 120, 0.35);
   cursor: pointer;
   transition: transform var(--transition-spring), background var(--transition-fast), box-shadow var(--transition-fast);
   z-index: 1001;
@@ -238,7 +238,7 @@ body {
 
 .phone-screen .fab-main-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.45);
+  box-shadow: 0 10px 24px rgba(226, 149, 120, 0.45);
 }
 
 /* Xoay icon khi menu speed dial hoạt động */
@@ -307,7 +307,7 @@ body {
 
 .phone-screen .fab-menu-item.income {
   color: var(--success-color);
-  border-color: rgba(16, 185, 129, 0.3);
+  border-color: rgba(163, 177, 155, 0.3);
 }
 .phone-screen .fab-menu-item.income:hover {
   background: var(--success-bg);

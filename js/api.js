@@ -104,7 +104,7 @@ class ApiService {
         const b = parseInt(hex.substring(4, 6), 16);
         bgColor = `rgba(${r}, ${g}, ${b}, 0.15)`;
       } else {
-        bgColor = 'rgba(99, 102, 241, 0.15)';
+        bgColor = 'rgba(226, 149, 120, 0.15)';
       }
     }
 
@@ -114,7 +114,7 @@ class ApiService {
       name: cat.name || 'Danh mục mới',
       type: cat.type || 'expense',
       icon: cat.icon || 'tag',
-      color: cat.color || '#6366F1',
+      color: cat.color || '#E29578',
       bgColor: bgColor
     };
     cats[id] = savedCat;
@@ -430,6 +430,60 @@ class ApiService {
       return { status: 'success', id, synced: true };
     } catch (error) {
       return { status: 'success', id, synced: false };
+    }
+  }
+
+  /**
+   * Cập nhật giao dịch đã có
+   */
+  async updateTransaction(tx) {
+    // 1. Tạo đối tượng cập nhật hoàn chỉnh
+    const updatedTx = {
+      id: tx.id,
+      date: CONFIG.utils.normalizeDate(tx.date) || CONFIG.utils.getLocalDateString(),
+      type: tx.type || 'expense',
+      category: tx.category || 'other_expense',
+      amount: Number(tx.amount) || 0,
+      note: tx.note || '',
+      createdAt: tx.createdAt || new Date().toISOString()
+    };
+
+    // 2. Cập nhật lập tức vào LocalStorage
+    const localDataStr = localStorage.getItem(this.keys.TRANSACTIONS);
+    let transactions = localDataStr ? JSON.parse(localDataStr) : [];
+    transactions = transactions.map(item => String(item.id) === String(updatedTx.id) ? updatedTx : item);
+    localStorage.setItem(this.keys.TRANSACTIONS, JSON.stringify(transactions));
+
+    // Nếu chế độ Demo, trả về luôn không gọi API
+    if (this.isDemoMode()) {
+      return { status: 'success', transaction: updatedTx, isDemo: true };
+    }
+
+    // 3. Gửi request lên Google Sheets API (Background/Async)
+    try {
+      const params = new URLSearchParams({
+        action: 'edit',
+        id: updatedTx.id,
+        date: updatedTx.date,
+        type: updatedTx.type,
+        category: updatedTx.category,
+        amount: updatedTx.amount,
+        note: updatedTx.note
+      });
+
+      const getUrl = `${this.apiUrl}?${params.toString()}`;
+      
+      // Gửi ngầm qua GET/POST (no-cors hoặc follow redirect)
+      fetch(getUrl, { method: 'GET', mode: 'no-cors' })
+        .then(() => {
+          console.log('Đã gửi dữ liệu đồng bộ cập nhật lên Google Sheets thành công (GET no-cors)');
+        })
+        .catch(err => console.warn('Lỗi gửi API Google Sheet:', err));
+
+      return { status: 'success', transaction: updatedTx, synced: true };
+    } catch (error) {
+      console.error('Lỗi kết nối API Google Sheet:', error);
+      return { status: 'success', transaction: updatedTx, synced: false, error: error.message };
     }
   }
 
